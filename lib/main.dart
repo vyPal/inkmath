@@ -56,6 +56,7 @@ class _HomePageState extends State<HomePage> {
   List<StrokePoint> _points = [];
   String _recognizedText = '';
   bool _canAddToStack = false;
+  final Map<String, dynamic> _variables = {};
 
   @override
   void dispose() {
@@ -99,8 +100,15 @@ class _HomePageState extends State<HomePage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   ElevatedButton(
-                    onPressed: _recogniseText,
-                    child: const Text('Read Text'),
+                    onPressed: () {
+                      _clearPad();
+                      _ink.strokes.clear();
+                      _recognizedText = '';
+                      _canAddToStack = false;
+                      _variables.clear();
+                      setState(() {});
+                    },
+                    child: const Text('Clear Stack'),
                   ),
                   ElevatedButton(
                     onPressed: _clearPad,
@@ -155,7 +163,13 @@ class _HomePageState extends State<HomePage> {
                     Padding(
                       padding: const EdgeInsets.only(left: 16.0),
                       child: ElevatedButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          _points.clear();
+                          _ink.strokes.clear();
+                          _recognizedText = '';
+                          _canAddToStack = false;
+                          setState(() {});
+                        },
                         child: const Text("Add to stack"),
                       ),
                     ),
@@ -244,7 +258,7 @@ class _HomePageState extends State<HomePage> {
       candidates.sort((a, b) => b.score.compareTo(a.score));
       _recognizedText = '';
       for (final candidate in candidates) {
-        final result = _evaluateMathExpression(candidate.text);
+        final result = _evaluateMathExpression(candidate.text.toLowerCase());
         if (result != null) {
           _recognizedText =
               '${candidate.text.endsWith("=") ? candidate.text.substring(0, candidate.text.length - 1) : candidate.text} = $result';
@@ -261,34 +275,75 @@ class _HomePageState extends State<HomePage> {
 
   dynamic _evaluateMathExpression(String expression) {
     try {
-      // Remove spaces
-      final cleanedExpression = expression.replaceAll(' ', '');
+      // Remove spaces and convert to lowercase
+      final cleanedExpression = expression.replaceAll(' ', '').toLowerCase();
 
       // Check if the expression ends with '=' and remove it
       final exp = cleanedExpression.endsWith('=')
           ? cleanedExpression.substring(0, cleanedExpression.length - 1)
           : cleanedExpression;
 
-      // Parse and evaluate the expression
-      final parsedExpression = Expression.parse(exp);
-      const evaluator = ExpressionEvaluator();
+      // Check for variable assignment (e.g., x=5)
+      final variableAssignment = RegExp(r'^([a-zA-Z_]\w*)=(.*)$');
+      final match = variableAssignment.firstMatch(exp);
 
-      // Define constants and functions
-      final context = {
-        'pi': math.pi,
-        'e': math.e,
-        'cos': (num x) => math.cos(x),
-        'sin': (num x) => math.sin(x),
-        'tan': (num x) => math.tan(x),
-        'sqrt': (num x) => math.sqrt(x),
-        'log': (num x) => math.log(x),
-        'exp': (num x) => math.exp(x),
-        'pow': (num x, num y) => math.pow(x, y),
-      };
+      if (match != null) {
+        final variableName = match.group(1)!;
+        final variableValueExpression = match.group(2)!;
 
-      final result = evaluator.eval(parsedExpression, context);
+        // Parse and evaluate the value expression
+        final parsedExpression = Expression.parse(variableValueExpression);
+        const evaluator = ExpressionEvaluator();
 
-      return result;
+        // Define constants and functions
+        final context = {
+          'pi': math.pi,
+          'e': math.e,
+          'cos': (num x) => math.cos(x),
+          'sin': (num x) => math.sin(x),
+          'tan': (num x) => math.tan(x),
+          'sqrt': (num x) => math.sqrt(x),
+          'log': (num x) => math.log(x),
+          'exp': (num x) => math.exp(x),
+          'pow': (num x, num y) => math.pow(x, y),
+          ..._variables, // Include existing variables
+        };
+
+        final result = evaluator.eval(parsedExpression, context);
+
+        // Set the variable in the context
+        _variables[variableName] = result;
+
+        // Set _canAddToStack to true
+        _canAddToStack = true;
+
+        return result;
+      } else {
+        // Parse and evaluate the expression
+        final parsedExpression = Expression.parse(exp);
+        const evaluator = ExpressionEvaluator();
+
+        // Define constants and functions
+        final context = {
+          'pi': math.pi,
+          'e': math.e,
+          'cos': (num x) => math.cos(x),
+          'sin': (num x) => math.sin(x),
+          'tan': (num x) => math.tan(x),
+          'sqrt': (num x) => math.sqrt(x),
+          'log': (num x) => math.log(x),
+          'exp': (num x) => math.exp(x),
+          'pow': (num x, num y) => math.pow(x, y),
+          ..._variables, // Include existing variables
+        };
+
+        final result = evaluator.eval(parsedExpression, context);
+
+        // Reset _canAddToStack to false
+        _canAddToStack = false;
+
+        return result;
+      }
     } catch (e) {
       print('Error evaluating expression: $e');
     }
